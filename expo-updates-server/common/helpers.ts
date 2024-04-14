@@ -102,7 +102,7 @@ export async function createRollBackDirectiveAsync(updateBundlePath: string) {
     return {
       type: 'rollBackToEmbedded',
       parameters: {
-        commitTime: new Date(rollbackFileStat.birthtime).toISOString(),
+        commitTime: new Date(rollbackFileStat.mtime).toISOString(), //docker掛載狀態下birthtime可能會拿不到，改用mtime
       },
     };
   } catch (error) {
@@ -129,9 +129,11 @@ export async function getMetadataAsync({
     const metadataJson = JSON.parse(updateMetadataBuffer.toString('utf-8'));
     const metadataStat = await fs.stat(metadataPath);
 
+    //console.error('====metadataStat',JSON.stringify(metadataStat));
+
     return {
       metadataJson,
-      createdAt: new Date(metadataStat.birthtime).toISOString(),
+      createdAt: new Date(metadataStat.mtime).toISOString(), //docker掛載狀態下birthtime可能會拿不到，改用mtime
       id: createHash(updateMetadataBuffer, 'sha256', 'hex'),
     };
   } catch (error) {

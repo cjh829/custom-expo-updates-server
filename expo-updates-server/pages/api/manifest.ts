@@ -21,6 +21,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
   if (req.method !== 'GET') {
     res.statusCode = 405;
     res.json({ error: 'Expected GET.' });
+    console.error('manifest error1');
     return;
   }
 
@@ -30,6 +31,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     res.json({
       error: 'Unsupported protocol version. Expected either 0 or 1.',
     });
+    console.error('manifest error2');
     return;
   }
   const protocolVersion = parseInt(protocolVersionMaybeArray ?? '0', 10);
@@ -40,6 +42,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     res.json({
       error: 'Unsupported platform. Expected either ios or android.',
     });
+    console.error('manifest error3');
     return;
   }
 
@@ -49,6 +52,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     res.json({
       error: 'No runtimeVersion provided.',
     });
+    console.error('manifest error4');
     return;
   }
 
@@ -60,14 +64,21 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     res.json({
       error: error.message,
     });
+
+    console.error('manifest error5',error?.message);
     return;
   }
 
+  console.error('manifest', updateBundlePath, runtimeVersion, platform, process.env.HOSTNAME);
+
   const updateType = await getTypeOfUpdateAsync(updateBundlePath);
+
+  console.error('updateType',updateType);
 
   try {
     try {
       if (updateType === UpdateType.NORMAL_UPDATE) {
+        console.error('manifest NORMAL_UPDATE1');
         await putUpdateInResponseAsync(
           req,
           res,
@@ -76,8 +87,11 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
           platform,
           protocolVersion
         );
+        console.error('manifest NORMAL_UPDATE2');
       } else if (updateType === UpdateType.ROLLBACK) {
+        console.error('manifest ROLLBACK1');
         await putRollBackInResponseAsync(req, res, updateBundlePath, protocolVersion);
+        console.error('manifest ROLLBACK2');
       }
     } catch (maybeNoUpdateAvailableError) {
       if (maybeNoUpdateAvailableError instanceof NoUpdateAvailableError) {
@@ -169,7 +183,11 @@ async function putUpdateInResponseAsync(
       });
       return;
     }
+
     const manifestString = JSON.stringify(manifest);
+
+    //console.error('===manifestString',manifestString);
+
     const hashSignature = signRSASHA256(manifestString, privateKey);
     const dictionary = convertToDictionaryItemsRepresentation({
       sig: hashSignature,
@@ -196,6 +214,11 @@ async function putUpdateInResponseAsync(
   form.append('extensions', JSON.stringify({ assetRequestHeaders }), {
     contentType: 'application/json',
   });
+
+  //const logfilePath = __dirname + `/manifestform-${Date.now()}.log`;
+  //console.error('===write to',logfilePath)
+  //const mfs = require('fs');
+  //mfs.writeFileSync(logfilePath, JSON.stringify(form))
 
   res.statusCode = 200;
   res.setHeader('expo-protocol-version', protocolVersion);

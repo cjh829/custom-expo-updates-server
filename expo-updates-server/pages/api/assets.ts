@@ -12,21 +12,26 @@ import {
 export default async function assetsEndpoint(req: NextApiRequest, res: NextApiResponse) {
   const { asset: assetName, runtimeVersion, platform } = req.query;
 
+  console.error('assets', assetName, runtimeVersion, platform, process.env.HOSTNAME);
+
   if (!assetName || typeof assetName !== 'string') {
     res.statusCode = 400;
     res.json({ error: 'No asset name provided.' });
+    console.error('assets error1');
     return;
   }
 
   if (platform !== 'ios' && platform !== 'android') {
     res.statusCode = 400;
     res.json({ error: 'No platform provided. Expected "ios" or "android".' });
+    console.error('assets error2');
     return;
   }
 
   if (!runtimeVersion || typeof runtimeVersion !== 'string') {
     res.statusCode = 400;
     res.json({ error: 'No runtimeVersion provided.' });
+    console.error('assets error3');
     return;
   }
 
@@ -38,8 +43,11 @@ export default async function assetsEndpoint(req: NextApiRequest, res: NextApiRe
     res.json({
       error: error.message,
     });
+    console.error('assets error4', error?.message);
     return;
   }
+
+  console.error('updateBundlePath', updateBundlePath);
 
   const { metadataJson } = await getMetadataAsync({
     updateBundlePath,
@@ -56,6 +64,7 @@ export default async function assetsEndpoint(req: NextApiRequest, res: NextApiRe
   if (!fs.existsSync(assetPath)) {
     res.statusCode = 404;
     res.json({ error: `Asset "${assetName}" does not exist.` });
+    console.error('assets error5', assetName);
     return;
   }
 
@@ -69,8 +78,16 @@ export default async function assetsEndpoint(req: NextApiRequest, res: NextApiRe
     );
     res.end(asset);
   } catch (error) {
+    console.error('assets error6', error);
     console.log(error);
     res.statusCode = 500;
     res.json({ error });
   }
+
+  console.error('assets success', assetPath);
+}
+export const config = {
+  api: {
+    responseLimit: false,
+  },
 }

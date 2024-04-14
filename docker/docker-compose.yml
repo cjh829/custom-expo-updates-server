@@ -1,0 +1,13 @@
+version: "3.7"
+services:
+  EXPO_UPDATE_SERVER:
+    image: expo_update_server
+    container_name: expo_update_server
+    volumes:
+      - ./updates:/server/updates
+    environment:
+#      NODE_ENV: "production"
+      HOSTNAME: "http://192.168.0.138:3000"
+      PRIVATE_KEY_PATH: "/server/code-signing-keys/private-key.pem"
+    ports:
+      - "3000:3000"
