@@ -13,10 +13,9 @@ git clone git@github.com:cjh829/custom-expo-updates-server.git
 1. private-key.pem
 2. public-key.pem
 
-### 3. 配置公開域名，編輯 docker/docker-compose.yml
+### ~~3. 配置公開域名，編輯 docker/docker-compose.yml~~ 這步驟不需要了
 ```yaml
     environment:
-      HOSTNAME: "http://192.168.0.138:3000" # <---這裡把公開域名填入，不用帶3000 port
       PRIVATE_KEY_PATH: "/server/code-signing-keys/private-key.pem" # <---這行不用動
 ```
 

@@ -142,6 +142,20 @@ async function putUpdateInResponseAsync(
     runtimeVersion,
   });
   const platformSpecificMetadata = metadataJson.fileMetadata[platform];
+
+  // 类型断言处理可能的 'x-forwarded' 头字段
+  const forwardedProto = req.headers['x-forwarded-proto'] as string | undefined;
+  const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+
+  // 检查 req.socket 是否有 encrypted 属性
+  const isHttps = (req.socket as any).encrypted ? 'https' : 'http';
+
+  // 如果没有 'x-forwarded' 头字段，则使用默认值
+  const protocol = forwardedProto || isHttps;
+  const host = forwardedHost || req.headers.host;
+
+  const thisUrlWithoutPath = `${protocol}://${host}`;
+
   const manifest = {
     id: convertSHA256HashToUUID(id),
     createdAt,
@@ -155,6 +169,7 @@ async function putUpdateInResponseAsync(
           runtimeVersion,
           platform,
           isLaunchAsset: false,
+          urlWithoutPath: thisUrlWithoutPath,
         })
       )
     ),
@@ -165,6 +180,7 @@ async function putUpdateInResponseAsync(
       runtimeVersion,
       platform,
       ext: null,
+      urlWithoutPath: thisUrlWithoutPath,
     }),
     metadata: {},
     extra: {

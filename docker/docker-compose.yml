@@ -8,7 +8,7 @@ services:
       - ./code-signing-keys:/server/code-signing-keys
     environment:
 #      NODE_ENV: "production"
-      HOSTNAME: "http://192.168.0.138:3000"
+#      HOSTNAME: "http://192.168.0.138:3000" 不配置域名for動態配置熱更域名
       PRIVATE_KEY_PATH: "/server/code-signing-keys/private-key.pem"
     ports:
       - "3000:3000"
