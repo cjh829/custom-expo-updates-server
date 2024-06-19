@@ -150,7 +150,7 @@ async function putUpdateInResponseAsync(
   // 检查 req.socket 是否有 encrypted 属性
   const isHttps = (req.socket as any).encrypted ? 'https' : 'http';
 
-  console.log('===putUpdateInResponseAsync',forwardedProto,forwardedHost,isHttps, req.url);
+  console.log('===putUpdateInResponseAsync',forwardedProto,forwardedHost,isHttps, JSON.stringify(req.rawHeaders));
 
   // 如果没有 'x-forwarded' 头字段，则使用默认值
   const protocol = forwardedProto || isHttps;
