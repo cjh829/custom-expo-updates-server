@@ -143,20 +143,8 @@ async function putUpdateInResponseAsync(
   });
   const platformSpecificMetadata = metadataJson.fileMetadata[platform];
 
-  // 类型断言处理可能的 'x-forwarded' 头字段
-  const forwardedProto = req.headers['X-Forwarded-Proto'] as string | undefined;
-  const forwardedHost = req.headers['X-Forwarded-Host'] as string | undefined;
-
-  // 检查 req.socket 是否有 encrypted 属性
-  const isHttps = (req.socket as any).encrypted ? 'https' : 'http';
-
-  console.log('===putUpdateInResponseAsync',forwardedProto,forwardedHost,isHttps, JSON.stringify(req.rawHeaders));
-
-  // 如果没有 'x-forwarded' 头字段，则使用默认值
-  const protocol = forwardedProto || isHttps;
-  const host = forwardedHost || req.headers.host;
-
-  const thisUrlWithoutPath = `${protocol}://${host}`;
+  //寫死https，需要本地測試再改(原本用X-Forwarded-相關header判斷，但在aws裡面無法拿到正確值，放棄，改寫死)
+  const thisUrlWithoutPath = `https://${req.headers.host}`;
 
   const manifest = {
     id: convertSHA256HashToUUID(id),
