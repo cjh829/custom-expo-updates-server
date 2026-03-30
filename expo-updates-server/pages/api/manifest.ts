@@ -143,8 +143,50 @@ async function putUpdateInResponseAsync(
   });
   const platformSpecificMetadata = metadataJson.fileMetadata[platform];
 
-  //寫死https，需要本地測試再改(原本用X-Forwarded-相關header判斷，但在aws裡面無法拿到正確值，放棄，改寫死)
-  const thisUrlWithoutPath = `https://${req.headers.host}`;
+  // 印出所有 headers，方便在 AWS 環境中 debug 確認實際收到哪些 headers
+  console.log('===putUpdateInResponseAsync ALL headers', JSON.stringify(req.headers));
+
+  // Node.js 中所有 header key 均為小寫，依優先順序判斷 protocol:
+  // 0. FORCE_PROTOCOL 環境變數 (AWS 結構無法自動收到 header 時用)
+  // 1. x-forwarded-proto (Nginx / ALB / CloudFront 標準 header)
+  // 2. forwarded header (RFC 7239，e.g. "proto=https")
+  // 3. req.socket.encrypted (TLS 直連)
+  // 4. 預設 http
+  const forceProtocol = 'https'; // 設 'https' 或 'http'
+  const xForwardedProto = req.headers['x-forwarded-proto'] as string | undefined;
+  const xForwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+
+  // 解析 RFC 7239 Forwarded header，例如："for=1.2.3.4;proto=https;host=example.com"
+  const forwardedHeader = req.headers['forwarded'] as string | undefined;
+  let forwardedHeaderProto: string | undefined;
+  if (forwardedHeader) {
+    const match = forwardedHeader.match(/proto=(https?)/i);
+    if (match) {
+      forwardedHeaderProto = match[1].toLowerCase();
+    }
+  }
+
+  // socket 是否為 TLS 加密連線（直連 HTTPS）
+  const socketProtocol = (req.socket as any).encrypted ? 'https' : 'http';
+
+  const protocol =
+    forceProtocol ||
+    xForwardedProto?.split(',')[0].trim() ||
+    forwardedHeaderProto ||
+    socketProtocol;
+  const host = xForwardedHost || req.headers.host;
+
+  console.log('===putUpdateInResponseAsync protocol detection', {
+    forceProtocol,
+    xForwardedProto,
+    xForwardedHost,
+    forwardedHeaderProto,
+    socketProtocol,
+    resolvedProtocol: protocol,
+    resolvedHost: host,
+  });
+
+  const thisUrlWithoutPath = `${protocol}://${host}`;
 
   const manifest = {
     id: convertSHA256HashToUUID(id),
