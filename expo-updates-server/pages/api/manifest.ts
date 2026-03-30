@@ -65,7 +65,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
       error: error.message,
     });
 
-    console.error('manifest error5',error?.message);
+    console.error('manifest error5', error?.message);
     return;
   }
 
@@ -73,7 +73,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
 
   const updateType = await getTypeOfUpdateAsync(updateBundlePath);
 
-  console.error('updateType',updateType);
+  console.error('updateType', updateType);
 
   try {
     try {
@@ -143,47 +143,98 @@ async function putUpdateInResponseAsync(
   });
   const platformSpecificMetadata = metadataJson.fileMetadata[platform];
 
-  // 印出所有 headers，方便在 AWS 環境中 debug 確認實際收到哪些 headers
-  console.log('===putUpdateInResponseAsync ALL headers', JSON.stringify(req.headers));
+  // 預設 protocol，當自動偵測失敗或結果不合法時使用
+  const DEFAULT_PROTOCOL = 'https';
 
-  // Node.js 中所有 header key 均為小寫，依優先順序判斷 protocol:
-  // 0. FORCE_PROTOCOL 環境變數 (AWS 結構無法自動收到 header 時用)
-  // 1. x-forwarded-proto (Nginx / ALB / CloudFront 標準 header)
-  // 2. forwarded header (RFC 7239，e.g. "proto=https")
-  // 3. req.socket.encrypted (TLS 直連)
-  // 4. 預設 http
-  const forceProtocol = 'https'; // 設 'https' 或 'http'
+  // Node.js 中所有 header key 均為小寫，不可用大寫
+  // protocol 偵測優先順序：
+  // 1. x-forwarded-proto         (Nginx / ALB / CloudFront 標準 header)
+  // 2. forwarded                 (RFC 7239，e.g. "for=1.2.3.4;proto=https")
+  // 3. cloudfront-forwarded-proto (AWS CloudFront 專屬，比 x-forwarded-proto 更可靠)
+  // 4. x-forwarded-ssl           (舊版 AWS ELB Classic，"on" = https)
+  // 5. front-end-https           (Microsoft IIS/ARR，"on" = https)
+  // 6. cf-visitor                (Cloudflare，JSON 格式 '{"scheme":"https"}')
+  // 7. req.socket.encrypted      (TLS 直連)
+
+  // --- 1. x-forwarded-proto ---
   const xForwardedProto = req.headers['x-forwarded-proto'] as string | undefined;
-  const xForwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+  const xForwardedHost  = req.headers['x-forwarded-host']  as string | undefined;
 
-  // 解析 RFC 7239 Forwarded header，例如："for=1.2.3.4;proto=https;host=example.com"
+  // --- 2. forwarded (RFC 7239) ---
   const forwardedHeader = req.headers['forwarded'] as string | undefined;
   let forwardedHeaderProto: string | undefined;
   if (forwardedHeader) {
     const match = forwardedHeader.match(/proto=(https?)/i);
-    if (match) {
-      forwardedHeaderProto = match[1].toLowerCase();
-    }
+    if (match) forwardedHeaderProto = match[1].toLowerCase();
   }
 
-  // socket 是否為 TLS 加密連線（直連 HTTPS）
+  // --- 3. cloudfront-forwarded-proto (AWS CloudFront 專屬) ---
+  const cfProto = req.headers['cloudfront-forwarded-proto'] as string | undefined;
+
+  // --- 4. x-forwarded-ssl (舊版 AWS ELB Classic) ---
+  const xForwardedSsl = req.headers['x-forwarded-ssl'] as string | undefined;
+  const xForwardedSslProto = xForwardedSsl === 'on' ? 'https'
+    : xForwardedSsl === 'off' ? 'http'
+    : undefined;
+
+  // --- 5. front-end-https (Microsoft IIS / ARR) ---
+  const frontEndHttps = req.headers['front-end-https'] as string | undefined;
+  const frontEndHttpsProto = frontEndHttps?.toLowerCase() === 'on' ? 'https' : undefined;
+
+  // --- 6. cf-visitor (Cloudflare，JSON 格式) ---
+  const cfVisitorRaw = req.headers['cf-visitor'] as string | undefined;
+  let cfVisitorProto: string | undefined;
+  if (cfVisitorRaw) {
+    try {
+      const cfVisitor = JSON.parse(cfVisitorRaw) as { scheme?: string };
+      if (cfVisitor.scheme === 'https' || cfVisitor.scheme === 'http') {
+        cfVisitorProto = cfVisitor.scheme;
+      }
+    } catch { /* JSON 解析失敗，忽略 */ }
+  }
+
+  // --- 7. socket.encrypted (TLS 直連) ---
   const socketProtocol = (req.socket as any).encrypted ? 'https' : 'http';
 
-  const protocol =
-    forceProtocol ||
-    xForwardedProto?.split(',')[0].trim() ||
-    forwardedHeaderProto ||
+  // 依優先序合併，?? 確保只在 undefined/null 時才往下走
+  const detectedProtocol =
+    xForwardedProto?.split(',')[0].trim() ??
+    forwardedHeaderProto ??
+    cfProto ??
+    xForwardedSslProto ??
+    frontEndHttpsProto ??
+    cfVisitorProto ??
     socketProtocol;
+
+  // 驗證偵測結果是否合法，不合法則 fallback 到 DEFAULT_PROTOCOL
+  const protocol = (detectedProtocol === 'https' || detectedProtocol === 'http')
+    ? detectedProtocol
+    : DEFAULT_PROTOCOL;
+
   const host = xForwardedHost || req.headers.host;
 
-  console.log('===putUpdateInResponseAsync protocol detection', {
-    forceProtocol,
-    xForwardedProto,
-    xForwardedHost,
-    forwardedHeaderProto,
-    socketProtocol,
-    resolvedProtocol: protocol,
-    resolvedHost: host,
+  // [DEBUG] 列出所有 request headers（便於確認 AWS/proxy 實際傳入了哪些 header）
+  console.log('===putUpdateInResponseAsync [ALL HEADERS]', JSON.stringify(req.headers, null, 2));
+
+  // [DEBUG] 列出各 protocol 偵測來源的值及最終結果
+  console.log('===putUpdateInResponseAsync [PROTOCOL DETECTION]', {
+    '1_x-forwarded-proto (raw)'       : xForwardedProto,
+    '1_x-forwarded-proto (parsed)'    : xForwardedProto?.split(',')[0].trim(),
+    '2_forwarded (raw)'               : forwardedHeader,
+    '2_forwarded (parsed proto)'      : forwardedHeaderProto,
+    '3_cloudfront-forwarded-proto'    : cfProto,
+    '4_x-forwarded-ssl (raw)'         : xForwardedSsl,
+    '4_x-forwarded-ssl (parsed)'      : xForwardedSslProto,
+    '5_front-end-https (raw)'         : frontEndHttps,
+    '5_front-end-https (parsed)'      : frontEndHttpsProto,
+    '6_cf-visitor (raw)'              : cfVisitorRaw,
+    '6_cf-visitor (parsed proto)'     : cfVisitorProto,
+    '7_socket.encrypted'              : (req.socket as any).encrypted,
+    '7_socketProtocol'                : socketProtocol,
+    '=> detectedProtocol'             : detectedProtocol,
+    '=> DEFAULT_PROTOCOL'             : DEFAULT_PROTOCOL,
+    '=> finalProtocol'                : protocol,
+    '=> host'                         : host,
   });
 
   const thisUrlWithoutPath = `${protocol}://${host}`;
